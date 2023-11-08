@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
@@ -5,6 +6,7 @@ using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UIElements;
 using static UnityEditor.PlayerSettings;
+using static UnityEditor.ShaderGraph.Internal.KeywordDependentCollection;
 using Vector3 = UnityEngine.Vector3;
 
 public class ProceduralSpiderMovement : MonoBehaviour
@@ -18,8 +20,6 @@ public class ProceduralSpiderMovement : MonoBehaviour
     public bool bodyOrientation = true;
 
     [SerializeField]
-    private float raycastRange = 1f;
-    [SerializeField]
     private Vector3[] defaultLegPositions;
     [SerializeField]
     private Vector3[] lastLegPositions;
@@ -28,10 +28,14 @@ public class ProceduralSpiderMovement : MonoBehaviour
     private Vector3[] newLegPositionsHit;
     private Vector3 lastBodyUp;
     private Vector3[] directionLine;
+    [SerializeField]
     private bool[] legMoving;
     private bool[] moveTurn;
     private int nbLegs;
+    [SerializeField]
     private float[] lerp;
+    [SerializeField]
+    int indexToMove;
 
     private Vector3 velocity;
     private Vector3 lastVelocity;
@@ -56,7 +60,8 @@ public class ProceduralSpiderMovement : MonoBehaviour
         newLegPositionsHit = new Vector3[nbLegs];
         legMoving = new bool[nbLegs];
         moveTurn = new bool[nbLegs];
-        lerp = new float[nbLegs];   
+        lerp = new float[nbLegs];
+        indexToMove = -1;
 
 
         for (int i = 0; i < nbLegs; ++i)
@@ -90,6 +95,14 @@ public class ProceduralSpiderMovement : MonoBehaviour
             lastVelocity = velocity;
 
 
+        if (velocity.magnitude < 0)
+        {
+            for(int i = 0;i < nbLegs; ++i)
+            {
+                legMoving[i] = false;
+                indexToMove = -1;
+            }
+        }
 
         float maxDistance = stepSize;
 
@@ -114,71 +127,73 @@ public class ProceduralSpiderMovement : MonoBehaviour
 
                 float distance = Vector3.ProjectOnPlane(newLegPositions[i] + velocity * velocityMultiplier - lastLegPositions[i], transform.up).magnitude;
 
-                if (distance > maxDistance && !legMoving[i])
+                if (distance > maxDistance)
                 {
+                    
                     // maxDistance = distance;
                     // indexToMove = i;
-                    legMoving[i] = true;
+                    indexToMove = i;
                     lerp[i] = 0f;
                     newLegPositions[i] = newLegPositionsHit[i];
                     //Debug.Log("Distance " + distance);
-                    Debug.Log("Distance " + distance);
+                   
                 }
 
-
-                if (lerp[i] < 1)
-                {
-                    Vector3 targetPos = Vector3.Lerp(lastLegPositions[i], newLegPositions[i], lerp[i]);
-                    targetPos.y += Mathf.Sin(lerp[i] * Mathf.PI) * stepHeight;
-                    target.position = targetPos;
-
-                    lerp[i] = lerp[i] += Time.deltaTime * stepSpeed;
-                }
-                else
-                {
-                    legMoving[i] = false;
-                    lastLegPositions[i] = newLegPositions[i];
-                    target.position = newLegPositions[i];
-                }
+                    if (i != indexToMove)
+                    target.position = lastLegPositions[i];
 
 
+                    //if (lerp[i] < 1)
+                    //{
+                    //    Vector3 targetPos = Vector3.Lerp(lastLegPositions[i], newLegPositions[i], lerp[i]);
+                    //    targetPos.y += Mathf.Sin(lerp[i] * Mathf.PI) * stepHeight;
+                    //    target.position = targetPos;
 
-                //if (i != indexToMove)
-                //{
-                //    target.position = lastLegPositions[i];
-                    
-                //}
-                //else if(i == indexToMove && lerp[i] < 1)
-                //{
-                //    Vector3 targetpos = Vector3.Lerp(lastLegPositions[i], newLegPositions[i], lerp[i]);
-                //    target.position = targetpos;
-
-                //    lerp[i] = lerp[i] += Time.deltaTime * speed;
-                //    Debug.Log("Lerp " + i + " " + lerp[i] );
-                //    // lastLegPositions[i] = newLegPositions[i];
-                //    //tLegPositions[i] = Vector3.Lerp(); hit.point;
-                //}
+                    //    lerp[i] = lerp[i] += Time.deltaTime * stepSpeed;
+                    //}
+                    //else
+                    //{
+                    //    legMoving[i] = false;
+                    //    lastLegPositions[i] = newLegPositions[i];
+                    //    target.position = newLegPositions[i];
+                    //}
 
 
-
-                // 
-                //Debug.Log("lastLegPositions " + i + " " + lastLegPositions[i]);
-                //Debug.Log("hit.point " + i + " " + hit.point);
-                //if (Vector3.Distance(newLegPositions[i], hit.point) > stepSize)
-                //{
-                //    indexToMove = i;
-                //    lastLegPositions[i] = Vector3.Lerp(); hit.point;
-                //}
-
-               
-
-                lastBodyPos = transform.position;
+                    lastBodyPos = transform.position;
             }
+
+
 
 
 
             //target.position = defaultLegPositions[i];
         }
+
+        if (indexToMove != -1 && !legMoving[indexToMove])
+        {
+
+            legMoving[indexToMove] = true;
+            //Debug.Log("start courutuine legMoving[i] " + indexToMove);
+            StartCoroutine(PerformStep(indexToMove, newLegPositions[indexToMove]));
+        }
+    }
+
+    IEnumerator PerformStep(int index, Vector3 targetPoint)
+    {
+
+        Vector3 startPos = lastLegPositions[index];
+        for (int i = 1; i <= smoothness; ++i)
+        {
+            targets[index].position = Vector3.Lerp(startPos, targetPoint, i / (float)(smoothness + 1f));
+            targets[index].position += transform.up * Mathf.Sin(i / (float)(smoothness + 1f) * Mathf.PI) * stepHeight;
+           // Debug.Log("targets[index].position " + i + targets[index].position);
+            yield return new WaitForFixedUpdate();
+        }
+        lastLegPositions[index] = newLegPositions[index];
+        targets[index].position = newLegPositions[index];
+        legMoving[index] = false;
+        indexToMove = -1;
+
     }
 
     private void OnDrawGizmos()
