@@ -4,6 +4,7 @@ using UnityEngine;
 
 public class RotatorScript : MonoBehaviour
 {
+    public bool isPickup;
 
 
     // Update is called once per frame
